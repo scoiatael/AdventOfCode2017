@@ -13,29 +13,16 @@ let spin n (dancers : Dancers) =
     let afterSpin = dancers.[(spinpoint+1)..] in
     Array.append afterSpin beforeSpin
 
-let swap a b m =
-    let valA = Map.find a m in
-    let valB = Map.find b m in
-    [(a, valB); (b, valA)]
-    |> List.fold (fun m (a, b) -> Map.add a b m) m
-
 let exchange a b (dancers : Dancers) =
-    dancers
-    |> Array.indexed
-    |> Map.ofArray
-    |> swap a b
-    |> Map.toArray
-    |> Array.map snd
+    let valA = dancers.[a] in
+      dancers.[a] <- dancers.[b]
+    ; dancers.[b] <- valA
+    ; dancers
 
 let partner a b (dancers : Dancers) =
-    dancers
-    |> Array.indexed
-    |> Array.map (fun (a, b) -> (b, a))
-    |> Map.ofArray
-    |> swap a b
-    |> Map.toArray
-    |> Array.sortBy snd
-    |> Array.map fst
+    let idxA = Array.findIndex ((=) a) dancers in
+    let idxB = Array.findIndex ((=) b) dancers in
+    exchange idxA idxB dancers
 
 let parseCommand (input : string) =
     let cmd = input.[0] in
@@ -59,7 +46,7 @@ let iter n f a =
 
 let solve2 input =
    let cmds = parse input in
-   iter 1_000 (fun str -> Array.fold (|>) str cmds) inputDancers
+   iter 1_000_00 (fun str -> Array.fold (|>) str cmds) inputDancers
 
 
 let () = printf "%s\n" (solve2 input |> String)
