@@ -38,17 +38,56 @@ let parse (input : string) =
     input.Split ','
     |> Array.map parseCommand
 
-let solve d cmd = execute cmd d
-let solve1 = parse >> Array.fold solve inputDancers >> String
+type OptimizedCommand = {partner: Map<char, char>; spin: int; exchange: Map<int, int>; listLength: int}
+let NewOptimizedCommand chrs =
+    let len = (Array.length chrs) in
+    { partner= chrs |> Array.map (fun a -> (a,a)) |> Map.ofArray
+    ; spin=0
+    ; exchange= [0..len-1] |> List.map (fun a -> (a,a)) |> Map.ofList
+    ; listLength= len}
+
+let addSpin {listLength=listLength; spin=spin} b = (b + spin) % listLength
+let swapAfterSpin g a b = (addSpin g a, addSpin g b)
+let addSwap m a b =
+    let valA = Map.find a m in
+    let valB = Map.find b m in
+    m
+    |> Map.add a valB
+    |> Map.add b valA
+
+let optimize oc = function
+    | (Spin n) -> {oc with spin=(addSpin oc n)}
+    | (Exchange(a,b)) -> (let (newA, newB) = swapAfterSpin oc a b in {oc with exchange=(addSwap oc.exchange newA newB)})
+    | (Partner(a,b)) -> {oc with partner=(addSwap oc.partner a b)}
+
+let executeOptimized d {spin=spin; partner=partner; exchange=exchange} =
+    let afterPartner  =
+        Map.toSeq partner
+        |> Seq.fold (fun d (a,b) -> execute (Partner(a,b)) d) d in
+    let afterExchange =
+        Map.toSeq exchange
+        |> Seq.fold (fun d (a,b) -> execute (Exchange (a,b)) d) afterPartner in
+    afterPartner |> execute (Spin spin)
+
+let optimizeSeqFor chrs = Seq.fold optimize (NewOptimizedCommand chrs)
+let solve = optimizeSeqFor inputDancers // >> executeOptimized inputDancers >> String
+let solve1 = parse >> solve
 let input = System.IO.File.ReadAllText "input.txt"
 
-let iter n f a =
-    Seq.init n id
-    |> Seq.fold (fun a _ -> f a) a
+let check input cmdSeq =
+    let originalInput = Array.copy input in
+    cmdSeq
+    |> Seq.fold (fun (noc, mutated : char []) cmd ->
+                 ( printf "%A on %A vs %A\n" cmd (executeOptimized originalInput noc |> String) (mutated |> String)
+                 ; ((optimize noc cmd), (execute cmd mutated)))) (NewOptimizedCommand input, input)
 
-let solve2 input =
-   let cmds = parse input in
-   iter 1_000_00 (fun str -> Array.fold (solve) str cmds) inputDancers
+// let iter n f a =
+//     Seq.init n id
+//     |> Seq.fold (fun a _ -> f a) a
+
+// let solve2 input =
+//    let cmds = parse input in
+//    iter 1_000_00 (fun str -> Array.fold (solve) str cmds) inputDancers
 
 
-let () = printf "%s\n" (solve2 input |> String)
+// let () = printf "%s\n" (solve2 input |> String)
