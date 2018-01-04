@@ -16,6 +16,7 @@ let rec execute = function
       let afterSpin = dancers.[(spinpoint+1)..] in
       Array.append afterSpin beforeSpin
     | (Exchange(a, b)) -> fun (dancers : Dancers) ->
+      let dancers = Array.copy dancers in
       let valA = dancers.[a] in
         dancers.[a] <- dancers.[b]
       ; dancers.[b] <- valA
@@ -47,7 +48,8 @@ let NewOptimizedCommand chrs =
     ; listLength= len}
 
 let addSpin {listLength=listLength; spin=spin} b = (b + spin) % listLength
-let swapAfterSpin g a b = (addSpin g a, addSpin g b)
+let addNSpin {listLength=listLength; spin=spin} b = (b - spin + listLength) % listLength
+let exchangeAfterSpin g a b = (addNSpin g a, addNSpin g b)
 let addSwap m a b =
     let valA = Map.find a m in
     let valB = Map.find b m in
@@ -57,20 +59,50 @@ let addSwap m a b =
 
 let optimize oc = function
     | (Spin n) -> {oc with spin=(addSpin oc n)}
-    | (Exchange(a,b)) -> (let (newA, newB) = swapAfterSpin oc a b in {oc with exchange=(addSwap oc.exchange newA newB)})
+    | (Exchange(a,b)) -> (let (newA, newB) = exchangeAfterSpin oc a b in {oc with exchange=(addSwap oc.exchange newA newB)})
     | (Partner(a,b)) -> {oc with partner=(addSwap oc.partner a b)}
 
+let partnerMerge m1 m2 =
+    Map.toList m1
+    |> List.map (fun (k, v) -> (k, Map.find v m2))
+    |> Map.ofList
+
+let exchangeMerge g exchange =
+    Map.toList exchange
+    |> List.map (fun (a, b) -> exchangeAfterSpin g a b)
+    |> Map.ofList
+
+// Assume list lengths are the same
+// This assumption should be probably moved to module level
+let add oc {partner=partner; spin=spin; exchange=exchange} =
+    let newPartner = partnerMerge oc.partner partner in
+    let newSpin = addSpin oc spin in
+    let newExchange = exchangeMerge oc exchange in
+    {oc with partner=newPartner; spin=newSpin; exchange=newExchange}
+
+let reverseOf m =
+    m
+    |> Map.toList
+    |> List.map (fun (a, b) -> (b, a))
+    |> Map.ofList
+
 let executeOptimized d {spin=spin; partner=partner; exchange=exchange} =
-    let afterPartner  =
-        Map.toSeq partner
-        |> Seq.fold (fun d (a,b) -> execute (Partner(a,b)) d) d in
-    let afterExchange =
-        Map.toSeq exchange
-        |> Seq.fold (fun d (a,b) -> execute (Exchange (a,b)) d) afterPartner in
-    afterPartner |> execute (Spin spin)
+    let executePartner  = fun ds ->
+        let reversePartner = reverseOf partner in
+        ds |> Array.map (fun d -> Map.find d reversePartner) in
+    let executeExchange = fun ds ->
+        let original = Array.copy ds in
+        ds
+        |> Array.indexed
+        |> Array.map (fst >> fun idx -> original.[Map.find idx exchange]) in
+    d |> executeExchange |> executePartner |> execute (Spin spin)
 
 let optimizeSeqFor chrs = Seq.fold optimize (NewOptimizedCommand chrs)
-let solve = optimizeSeqFor inputDancers // >> executeOptimized inputDancers >> String
+let solve (cmds: Command seq) =
+    cmds
+    |> optimizeSeqFor inputDancers
+    |> executeOptimized inputDancers
+    |> String
 let solve1 = parse >> solve
 let input = System.IO.File.ReadAllText "input.txt"
 
@@ -78,16 +110,21 @@ let check input cmdSeq =
     let originalInput = Array.copy input in
     cmdSeq
     |> Seq.fold (fun (noc, mutated : char []) cmd ->
-                 ( printf "%A on %A vs %A\n" cmd (executeOptimized originalInput noc |> String) (mutated |> String)
+                 let fromOptimized = (executeOptimized originalInput noc |> String) in
+                 let fromMutation = (mutated |> String) in
+                 ( printf "%A on %A vs %A\n" cmd fromOptimized fromMutation
                  ; ((optimize noc cmd), (execute cmd mutated)))) (NewOptimizedCommand input, input)
 
-// let iter n f a =
-//     Seq.init n id
-//     |> Seq.fold (fun a _ -> f a) a
+let iter n a =
+    Seq.init n id
+    |> Seq.map (fun _ -> a)
 
-// let solve2 input =
-//    let cmds = parse input in
-//    iter 1_000_00 (fun str -> Array.fold (solve) str cmds) inputDancers
+let solve2 input =
+   let cmds = parse input |> Seq.ofArray in
+   let dancers = inputDancers in
+   iter 1_000 cmds
+   |> Seq.concat
+   |> solve
 
 
-// let () = printf "%s\n" (solve2 input |> String)
+let () = printf "%s\n" (solve2 input)
