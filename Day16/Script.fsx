@@ -67,9 +67,10 @@ let partnerMerge m1 m2 =
     |> List.map (fun (k, v) -> (k, Map.find v m2))
     |> Map.ofList
 
-let exchangeMerge g exchange =
+let exchangeMerge ({exchange=oldExchange} as g) exchange =
     Map.toList exchange
     |> List.map (fun (a, b) -> exchangeAfterSpin g a b)
+    |> List.map (fun (a, b) -> (a, Map.find b oldExchange) )
     |> Map.ofList
 
 // Assume list lengths are the same
@@ -108,23 +109,32 @@ let input = System.IO.File.ReadAllText "input.txt"
 
 let check input cmdSeq =
     let originalInput = Array.copy input in
+    let newOptimizedCommand = NewOptimizedCommand input in
     cmdSeq
     |> Seq.fold (fun (noc, mutated : char []) cmd ->
                  let fromOptimized = (executeOptimized originalInput noc |> String) in
                  let fromMutation = (mutated |> String) in
                  ( printf "%A on %A vs %A\n" cmd fromOptimized fromMutation
-                 ; ((optimize noc cmd), (execute cmd mutated)))) (NewOptimizedCommand input, input)
+                 ; ((optimize newOptimizedCommand cmd |> add noc), (execute cmd mutated)))) (newOptimizedCommand, input)
 
-let iter n a =
-    Seq.init n id
-    |> Seq.map (fun _ -> a)
+let toBinary =
+    Seq.unfold (fun st -> if st = 0 then Option.None else Option.Some (st % 2, st / 2))
+
+let binaryAdder start =
+    toBinary
+    >> Seq.mapFold (fun st idx -> ((idx, st), add st st)) start
+    >> fst
+    >> Seq.filter (fst >> ((<>) 0))
+    >> Seq.map snd
+    >> Seq.reduce add
 
 let solve2 input =
    let cmds = parse input |> Seq.ofArray in
    let dancers = inputDancers in
-   iter 1_000 cmds
-   |> Seq.concat
-   |> solve
+   let optimized = optimizeSeqFor dancers cmds in
+   binaryAdder optimized 1_000_000_000
+   |> executeOptimized dancers
+   |> String
 
 
-let () = printf "%s\n" (solve2 input)
+// let () = printf "%s\n" (solve2 input)
